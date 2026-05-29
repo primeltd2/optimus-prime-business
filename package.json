@@ -1,0 +1,62 @@
+{
+  "name": "optimus-prime-business",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Optimus Prime Business desktop and mobile AI business assistant.",
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "concurrently \"vite --host 127.0.0.1\" \"wait-on tcp:5173 && electron .\"",
+    "build": "tsc -b && vite build && tsc -p electron/tsconfig.json",
+    "preview": "vite preview",
+    "mobile:init": "npm install @capacitor/core @capacitor/cli @capacitor/android && npx cap add android",
+    "mobile:sync": "npm run build:web && npx cap sync android",
+    "build:web": "tsc -p tsconfig.app.json && vite build",
+    "dist:win": "npm run build && electron-builder --win nsis",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^5.1.1",
+    "dotenv": "^17.2.3",
+    "electron-store": "^10.1.0",
+    "lucide-react": "^0.555.0",
+    "mammoth": "^1.11.0",
+    "pdf-parse": "^2.4.5",
+    "vite": "^7.2.7"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "concurrently": "^9.2.1",
+    "electron": "^39.2.7",
+    "electron-builder": "^26.0.12",
+    "eslint": "^9.39.1",
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1",
+    "typescript": "^5.9.3",
+    "wait-on": "^9.0.3"
+  },
+  "build": {
+    "appId": "com.primeltd.optimusprimebusiness",
+    "productName": "Optimus Prime Business",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "CLAUDE.md",
+      "Core/**/*",
+      "Knowledge/**/*",
+      ".claude/skills/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}
