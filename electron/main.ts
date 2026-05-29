@@ -2,7 +2,6 @@ import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import path from "node:path";
 import fs from "node:fs/promises";
 import dotenv from "dotenv";
-import Store from "electron-store";
 import mammoth from "mammoth";
 import { createRequire } from "node:module";
 
@@ -30,22 +29,27 @@ type Attachment = {
   dataUrl?: string;
 };
 
-type AppStore = {
-  messages: ChatMessage[];
-};
-
-const store = new Store<AppStore>({
-  name: "optimus-prime-business",
-  defaults: {
-    messages: []
-  }
-}) as Store<AppStore> & {
-  get: <Key extends keyof AppStore>(key: Key, defaultValue?: AppStore[Key]) => AppStore[Key];
-  set: <Key extends keyof AppStore>(key: Key, value: AppStore[Key]) => void;
-};
-
 const isDev = !app.isPackaged;
 const rootDir = app.isPackaged ? process.resourcesPath : path.join(__dirname, "..");
+
+function storePath(): string {
+  return path.join(app.getPath("userData"), "optimus-prime-business.json");
+}
+
+async function getMessages(): Promise<ChatMessage[]> {
+  try {
+    const raw = await fs.readFile(storePath(), "utf8");
+    const parsed = JSON.parse(raw) as { messages?: ChatMessage[] };
+    return Array.isArray(parsed.messages) ? parsed.messages : [];
+  } catch {
+    return [];
+  }
+}
+
+async function setMessages(messages: ChatMessage[]): Promise<void> {
+  await fs.mkdir(path.dirname(storePath()), { recursive: true });
+  await fs.writeFile(storePath(), JSON.stringify({ messages }, null, 2), "utf8");
+}
 
 async function readIfExists(filePath: string): Promise<string> {
   try {
@@ -254,7 +258,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
-  ipcMain.handle("chat:getMessages", () => store.get("messages", []));
+  ipcMain.handle("chat:getMessages", () => getMessages());
 
   ipcMain.handle("files:pick", async () => {
     const result = await dialog.showOpenDialog({
@@ -291,8 +295,8 @@ app.whenReady().then(() => {
       attachments: payload.attachments || []
     };
 
-    const messages = [...store.get("messages", []), userMessage];
-    store.set("messages", messages);
+    const messages = [...(await getMessages()), userMessage];
+    await setMessages(messages);
 
     try {
       const answer = await callPollinations(messages.slice(-16));
@@ -303,7 +307,7 @@ app.whenReady().then(() => {
         createdAt: new Date().toISOString()
       };
       const nextMessages = [...messages, assistantMessage];
-      store.set("messages", nextMessages);
+      await setMessages(nextMessages);
       return { ok: true, messages: nextMessages };
     } catch (error) {
       const message = error instanceof Error ? error.message : "Erreur inconnue.";
@@ -311,8 +315,8 @@ app.whenReady().then(() => {
     }
   });
 
-  ipcMain.handle("chat:clear", () => {
-    store.set("messages", []);
+  ipcMain.handle("chat:clear", async () => {
+    await setMessages([]);
     return [];
   });
 

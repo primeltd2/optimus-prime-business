@@ -19,6 +19,10 @@ textarea {
   font: inherit;
 }
 
+.hiddenFileInput {
+  display: none;
+}
+
 .shell {
   display: grid;
   grid-template-columns: 340px minmax(0, 1fr);

@@ -37,6 +37,13 @@ npm run build
 npm run dist:win
 ```
 
+Recommande pour le developpement: Node.js LTS 20 ou 22. Le projet utilise des versions exactes dans `package.json` et ne depend plus de `wait-on`, `concurrently`, `electron-store` ni de `@hapi/formula`.
+
+## Builds locaux generes
+
+- Windows portable: `Deliverables/Optimus-Prime-Business-Windows.zip`
+- Android debug APK: `Deliverables/Optimus-Prime-Business-debug.apk`
+
 ## APK Android
 
 La base de configuration est dans `capacitor.config.ts`.

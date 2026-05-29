@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Optimus Prime Business</string>
+    <string name="title_activity_main">Optimus Prime Business</string>
+    <string name="package_name">com.primeltd.optimusprimebusiness</string>
+    <string name="custom_url_scheme">com.primeltd.optimusprimebusiness</string>
+</resources>

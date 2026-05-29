@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Bot, Download, Eraser, FilePlus2, Paperclip, Send, Sparkles, UserRound, X } from "lucide-react";
 
 const starterMessages: ChatMessage[] = [
@@ -18,6 +18,7 @@ export function App() {
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const hasUserMessages = useMemo(() => messages.some((message) => message.role === "user"), [messages]);
 
@@ -46,13 +47,9 @@ export function App() {
 
     const sentAttachments = attachments;
     setAttachments([]);
-    if (!window.optimus?.sendMessage) {
-      setIsSending(false);
-      setError("Le moteur IA local n'est pas disponible dans cette execution. Lance l'application desktop pour discuter avec l'API.");
-      return;
-    }
-
-    const result = await window.optimus.sendMessage(content, sentAttachments);
+    const result = window.optimus?.sendMessage
+      ? await window.optimus.sendMessage(content, sentAttachments)
+      : await sendWithBrowserApi([...messages, { id: crypto.randomUUID(), role: "user", content, createdAt: new Date().toISOString(), attachments: sentAttachments }]);
     setIsSending(false);
 
     if (result.ok) {
@@ -76,7 +73,7 @@ export function App() {
   async function pickFiles() {
     setError(null);
     if (!window.optimus?.pickFiles) {
-      setError("La selection de fichiers est disponible dans l'application desktop. La version Android utilisera le selecteur natif Capacitor.");
+      fileInputRef.current?.click();
       return;
     }
     try {
@@ -85,6 +82,13 @@ export function App() {
     } catch (eventError) {
       setError(eventError instanceof Error ? eventError.message : "Impossible de charger les fichiers.");
     }
+  }
+
+  async function handleBrowserFiles(event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files || []);
+    const mapped = await Promise.all(files.map(fileToAttachment));
+    setAttachments((current) => [...current, ...mapped]);
+    event.target.value = "";
   }
 
   function removeAttachment(id: string) {
@@ -197,6 +201,13 @@ export function App() {
         )}
 
         <form className="composer" onSubmit={handleSubmit}>
+          <input
+            ref={fileInputRef}
+            className="hiddenFileInput"
+            type="file"
+            multiple
+            onChange={handleBrowserFiles}
+          />
           <button className="fileButton" type="button" onClick={pickFiles} aria-label="Ajouter des fichiers">
             <FilePlus2 size={20} />
           </button>
@@ -213,4 +224,97 @@ export function App() {
       </section>
     </main>
   );
+}
+
+async function fileToAttachment(file: File): Promise<Attachment> {
+  const base = {
+    id: crypto.randomUUID(),
+    name: file.name,
+    path: file.name,
+    mimeType: file.type || "application/octet-stream",
+    size: file.size
+  };
+
+  if (file.type.startsWith("image/")) {
+    return { ...base, kind: "image", dataUrl: await readFileAsDataUrl(file) };
+  }
+
+  if (file.type.startsWith("text/") || /\.(md|json|csv|html|css|js|ts|tsx)$/i.test(file.name)) {
+    return { ...base, kind: "text", extractedText: (await file.text()).slice(0, 45000) };
+  }
+
+  return {
+    ...base,
+    kind: "binary",
+    extractedText: `Fichier joint non textuel: ${file.name} (${file.type || "application/octet-stream"}, ${file.size} octets).`
+  };
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+function buildBrowserMessage(message: ChatMessage) {
+  const attachmentText = (message.attachments || [])
+    .filter((attachment) => attachment.extractedText)
+    .map((attachment) => `\n\n[Fichier: ${attachment.name}]\n${attachment.extractedText}`)
+    .join("");
+  const text = `${message.content}${attachmentText}`;
+  const images = (message.attachments || []).filter((attachment) => attachment.kind === "image" && attachment.dataUrl);
+
+  if (message.role !== "user" || images.length === 0) return { role: message.role, content: text };
+
+  return {
+    role: message.role,
+    content: [
+      { type: "text", text },
+      ...images.map((attachment) => ({ type: "image_url", image_url: { url: attachment.dataUrl } }))
+    ]
+  };
+}
+
+async function sendWithBrowserApi(messages: ChatMessage[]): Promise<{ ok: boolean; messages: ChatMessage[]; error?: string }> {
+  const apiKey = import.meta.env.VITE_POLLINATIONS_API_KEY;
+  const model = import.meta.env.VITE_POLLINATIONS_MODEL || "openai";
+
+  if (!apiKey) {
+    return { ok: false, messages, error: "Cle API mobile manquante: ajoute VITE_POLLINATIONS_API_KEY dans .env." };
+  }
+
+  try {
+    const response = await fetch("https://gen.pollinations.ai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          {
+            role: "system",
+            content:
+              "Tu es Optimus Prime Business, une IA business directe, utile et orientee execution. Tu aides l'utilisateur a diagnostiquer son business et a produire des actions concretes. Reponds en francais."
+          },
+          ...messages.slice(-16).map(buildBrowserMessage)
+        ],
+        temperature: 0.7
+      })
+    });
+
+    if (!response.ok) throw new Error(await response.text());
+    const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
+    const answer = data.choices?.[0]?.message?.content || "Je n'ai pas recu de reponse exploitable.";
+    return {
+      ok: true,
+      messages: [...messages, { id: crypto.randomUUID(), role: "assistant", content: answer, createdAt: new Date().toISOString() }]
+    };
+  } catch (sendError) {
+    return { ok: false, messages, error: sendError instanceof Error ? sendError.message : "Erreur API mobile." };
+  }
 }
